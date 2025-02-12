@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up .NET Core
+        uses: actions/setup-dotnet@v1
+        with:
+          dotnet-version: '8.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release
+
+      - name: Test
+        run: dotnet test --configuration Release
+
+      - name: Publish
+        run: dotnet publish --configuration Release --output ${{github.workspace}}/output
+
+      - name: Archive and upload artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: drop
+          path: ${{github.workspace}}/output
+
+  deploy_dev:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: drop
+          path: ${{github.workspace}}/output
+
+      - name: Deploy to Azure Web App Dev
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: 'GitHubApp-48230296'
+          slot-name: 'dev'
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+
+  deploy_staging:
+    runs-on: ubuntu-latest
+    needs: deploy_dev
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: drop
+          path: ${{github.workspace}}/output
+
+      - name: Deploy to Azure Web App Staging
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: 'GitHubApp-48230296'
+          slot-name: 'staging'
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+
+  deploy_prod:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: drop
+          path: ${{github.workspace}}/output
+
+      - name: Swap staging and prod slots
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: 'GitHubApp-48230296'
+          slot-name: 'staging'
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          action: 'swap'
